@@ -1,0 +1,12 @@
+# Historical broad-only serology at HLA-B. No Bw4/Bw6 epitope typing declared,
+# so unobserved epitope information must not narrow candidates (Decision 1).
+name = "serology_broad_B"
+description = "Broad-level serology at HLA-B; no epitope interrogation."
+reference_policy = "permissive"
+
+[loci.HLA-B]
+typed = true
+assay_class = "serology"
+resolution = "serology"
+reference_name = "TOY-SER"
+serology_level = "broad"

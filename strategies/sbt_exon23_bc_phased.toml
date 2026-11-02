@@ -1,0 +1,17 @@
+# Sequence-based typing (SBT) of class I over exons 2+3, with B~C joint phase.
+# Reference artifacts are selected by name and must be registered in the
+# ReferenceRegistry passed to observe(). Idealized modeling of a phase-resolving
+# long-range assay (D8): B and C are jointly observed on one molecule.
+name = "sbt_exon23_bc_phased"
+description = "SBT exon2+exon3 class I; B~C whole-molecule joint phase."
+reference_policy = "strict"
+
+[defaults]
+typed = true
+assay_class = "sbt"
+resolution = "second_field"
+reference_name = "TOY-GEN"
+interrogated_features = ["exon2", "exon3"]
+
+[[phase_groups]]
+loci = ["HLA-B", "HLA-C"]
