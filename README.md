@@ -11,143 +11,164 @@ or simulated known genotypes without any dependency on DiplotypeForge.
 > **Core principle:** simulate what the typing method *observes*, including what
 > it *cannot* observe.
 
-Given a known phased HLA diplotype (a GL String) and a configurable typing
-strategy, TissueTypeForge simulates the typing result that strategy would
-report — reproducing information loss, ambiguity, and (in later milestones)
-mistyping.
+Given a known HLA genotype (a GL String) and a **typing profile**,
+TissueTypeForge simulates the typing result that profile would report —
+reproducing resolution-driven information loss and missing results. It also
+models a **population** as a joint distribution of typing profiles, reflecting
+how real donor registries contain groups of donors typed under different
+historical protocols.
 
-## Status: Milestone 1 — Observation framework
+## The model
 
-This release implements the observation *spine* on which all later assay models
-are built. It is deliberately scoped:
+### 1. Controlled resolution vocabulary
 
-| Area | M1 scope |
-|------|----------|
-| GL String | Standards-conformant recursive-descent parser + serializer, round-trippable |
-| Internal model | Phase-aware genotype representation supporting arbitrary locus subsets with known phase |
-| Strategy schema | Machine-readable TOML, per-locus config, phase groups, validation |
-| Resolution | **Idealized** `allele`, `first_field`, `second_field` observations |
-| Coverage | Per-locus typed / not-typed (missing results) |
-| Phase | Explicit phase-retention rules mapping to GL String operators |
-| Output | Observed GL String + structured metadata + information-loss record |
+Exactly three resolution modes are supported, applied per locus:
 
-### Explicitly deferred (not in M1)
+| Mode | Meaning | `A*02:01:01:01 + A*03:01:01:01` becomes |
+|------|---------|------------------------------------------|
+| `0-field` | no typing available at this locus | *(locus omitted — a missing result)* |
+| `1-field` | retain only the first field | `HLA-A*02+HLA-A*03` |
+| `2-field` | retain the first two fields | `HLA-A*02:01+HLA-A*03:01` |
 
-To avoid presenting idealized transformations as empirical laboratory
-simulations, the following raise an explicit `NotImplementedError` rather than
-being faked:
+Heterozygosity is preserved where distinguishable at the requested resolution.
+If two different alleles collapse to the same first-field name, the result does
+**not** assert true homozygosity: the collapse is recorded as preserved
+uncertainty in the observation's `loss_record`.
 
-- Sequence-region / assay-derived ambiguity (**M2**)
-- Serology mappings (**M2**)
-- Intermediate-resolution models (**M2**)
-- Stochastic error models: dropout, false homozygosity, substitution (**M3**)
-- Registry-scale batch operation (**M4**)
+Serology, SBT, SSO, SSP, and intermediate-resolution methods are **not** part of
+this model.
 
-The `ObservationResult` already exposes `expected_observation`, `observed`, and
-`error_category` fields so the M3 error layer slots in without changing the
-output contract. In M1, `expected_observation == observed` and the error
-category is always `none`.
+### 2. Typing profiles and populations
 
-## Scientific assumptions (M1)
+A **typing profile** assigns a resolution mode to *every* configured locus and
+carries a unique id and a weight. A **population typing model** is a categorical
+distribution over profiles. For each simulated donor, exactly one profile is
+sampled and applied as a whole — so resolution choices across loci are **joint**,
+never sampled independently per locus. This models correlated, protocol-driven
+typing patterns (e.g. a "legacy" lab types every locus coarsely).
 
-- **Idealized first/second-field** observation is modeled as nomenclature-field
-  truncation of the *true* allele. This is a baseline convenience model, **not**
-  an empirical assay. It assumes the reported field-level name is exactly the
-  truncation of truth with no measurement ambiguity. Real assays interrogate
-  sequence and are modeled in M2.
-- **Phase is only retained when a strategy declares a phase group** containing
-  the relevant loci. Phase is never invented because truth is known
-  (spec §6). Loci not sharing a phase group are reported with no interlocus
-  phase asserted.
-- **Idealized modes do not introduce ambiguity.** A field-truncated allele is
-  reported as a single allele, not a MAC/ambiguity set, because the idealized
-  model asserts the method resolves exactly to that field. Assay-derived
-  ambiguity is an M2 concern.
+The population's *genetic composition* (which true genotypes occur) and its
+*typing-profile distribution* (how donors were typed) are kept as separate
+concepts. No association between genotype and typing profile is introduced.
 
-## GL String operator mapping
+### 3. No interlocus phase
 
-TissueTypeForge uses the GL String operators with standard precedence
-(tightest to loosest):
+Observations never assert interlocus phase. Each typed locus is reported as an
+independent `^`-delimited block. Intralocus allele ambiguity (`/`) is retained.
 
-| Operator | Meaning | Internal concept |
-|----------|---------|------------------|
-| `/` | allele ambiguity | `AlleleList` |
-| `~` | in-phase (cis / haplotype) | ordering within a `GenotypeBlock` |
-| `+` | gene-copy pairing (trans) | the two copies of a `GenotypeBlock` |
-| `\|` | genotype ambiguity | `GenotypeAmbiguity` |
-| `^` | locus delimiter | separate `GenotypeBlock`s |
-
-A **phased block** over loci `{B, C}` is a single `GenotypeBlock` serialized as
-`B*..~C*..+B*..~C*..`. Breaking phase between B and C yields two independent
-blocks `B*..+B*.. ^ C*..+C*..`, which asserts no interlocus relationship.
-
-## Milestone 2 — assay-derived ambiguity and serology
-
-M2 adds scientifically realistic, assay-derived ambiguity on top of the M1
-spine. A strategy now selects an **assay class** per locus and the engine
-simulates what that assay can and cannot distinguish.
-
-| Assay class | Behavior |
-|-------------|----------|
-| `idealized` | M1 nomenclature truncation (unchanged, no reference data) |
-| `sbt` / `sso` | sequence observation over interrogated features; genotype-level ambiguity computed by **diploid pair enumeration** |
-| `serology` | antigen observation via a versioned allele→specificity map, broad/split lattice, and explicitly declared public epitopes |
-
-Key scientific guarantees:
-
-- **Diploid genotype ambiguity, not independent allele matching.** The engine
-  enumerates unordered allele *pairs* that reproduce the combined diploid
-  observation, so it never fabricates a genotype by crossing per-allele matches.
-- **Reference knowledge ≠ laboratory signal.** Incomplete reference data becomes
-  an *indeterminate* comparison, never a silent match or a silent exclusion.
-  `reference_policy = strict` (default) raises rather than returning a reduced
-  set it cannot prove exact; `permissive` keeps indeterminate candidates and
-  flags the result as approximate.
-- **Phase only where observed.** A `[[phase_groups]]` of sequence-typed loci is
-  enumerated as whole-molecule haplotype pairings (the product of observed
-  molecules, not of per-locus ambiguities), so partial phase is reproduced
-  without inventing cross-locus haplotypes.
-- **Serology is two outputs.** A structured antigen report (broad/split
-  specificities + declared Bw4/Bw6 epitopes) is kept **separate** from the
-  compatible-DNA GL String; antigen tokens are never placed in a GL String.
-
-### Public API
+## Public API
 
 ```python
 from tissuetypeforge import (
-    observe,                 # observe(truth_gl, strategy, *, seed=None, registry=None)
-    load_strategy_file,      # load a Strategy from a TOML file
-    load_strategy,           # load a Strategy from a parsed mapping
-    Strategy, ObservationResult, ErrorCategory,
-    parse_gl_string, serialize,   # thin wrappers over the glstring library
+    # resolution vocabulary
+    ResolutionMode, parse_resolution,
+    # profiles / population
+    TypingProfile, PopulationTypingModel,
+    build_profile, build_population,
+    load_population, load_population_file,
+    # single-donor observation
+    observe_genotype, DonorObservation,
+    # cohort simulation
+    simulate_cohort, sample_profile,
+    CohortResult, ReproducibilityManifest,
+    # general-purpose GL String round-trip
+    parse_gl_string, serialize,
 )
-from tissuetypeforge.reference import ReferenceRegistry, ColumnModel, Base, FeatureKey
-from tissuetypeforge.serology import SerologyModel, Assignment, Confidence, Specificity, Epitope
 ```
 
-End-to-end usage (truth GL String + strategy file + reference registry):
+### Observe one donor under one profile
 
 ```python
-registry = ReferenceRegistry()
-registry.register_column_model("IPD-3.55", column_model_for_B)   # pinned artifact
-strategy = load_strategy_file("strategies/sbt_exon23_bc_phased.toml")
-result = observe("HLA-B*07:02~HLA-C*07:02+HLA-B*08:01~HLA-C*07:01",
-                 strategy, registry=registry)
-result.observed          # observed GL String (DNA alleles only)
-result.antigen_reports   # structured serologic antigen reports (if any)
-result.metadata          # typed/missing loci, retained phase, reference versions
+from tissuetypeforge import TypingProfile, ResolutionMode, observe_genotype
+
+profile = TypingProfile(
+    id="modern",
+    weight=1.0,
+    resolution={"A": ResolutionMode.TWO_FIELD, "C": ResolutionMode.TWO_FIELD},
+)
+obs = observe_genotype("HLA-A*02:01:01:01+HLA-A*03:01:01:01", profile)
+obs.observed        # "HLA-A*02:01+HLA-A*03:01"
+obs.profile_id      # "modern"
+obs.missing_loci    # ()
 ```
 
-See `examples/demo_m2.py` for a runnable, strategy-file-driven demonstration of
-SBT joint phase, broad-only serology, and a mixed-assay strategy.
+### Simulate a cohort from a population config
 
-### GL String dependency
+```toml
+# populations/registry_example.toml
+name = "registry-example"
+loci = ["A", "C", "B", "DRB1"]
 
-TissueTypeForge uses the published **SIP `glstring`** library
-(repo `societyforimmunepolymorphism/py-glstring`, PyPI `glstring`) for all GL
-String parsing and serialization — a standards-conformant GL String 1.1
-implementation. TissueTypeForge does **not** ship its own GL String parser. The
-dependency is declared in `pyproject.toml` (`glstring>=0.1.0`).
+[[profiles]]
+id = "legacy"
+weight = 0.20
+resolution = { A = "1-field", B = "1-field", C = "0-field", DRB1 = "1-field" }
+
+[[profiles]]
+id = "intermediate"
+weight = 0.50
+resolution = { A = "2-field", B = "2-field", C = "1-field", DRB1 = "2-field" }
+
+[[profiles]]
+id = "modern"
+weight = 0.30
+resolution = { A = "2-field", B = "2-field", C = "2-field", DRB1 = "2-field" }
+```
+
+```python
+from tissuetypeforge import load_population_file, simulate_cohort
+
+pop = load_population_file("populations/registry_example.toml")
+result = simulate_cohort(truth_genotypes, pop, seed=42, donor_ids=donor_ids)
+
+for obs in result.observations:
+    print(obs.profile_id, obs.observed)
+
+result.manifest.assigned_profile_counts   # profile id -> donor count
+result.manifest.profile_assignments       # per-donor profile ids (replayable)
+result.manifest.seed                       # the seed used
+```
+
+The same inputs, configuration, and seed always produce identical outputs.
+
+### Batch driver (file of `id,glstring`)
+
+A command-line driver processes a file of donor records — a donor id and that
+donor's *true* genotype as a GL String — and writes the simulated observed
+typings plus a reproducibility manifest:
+
+```bash
+# examples/donors.csv has an `id,glstring` header
+uv run python -m tissuetypeforge.driver examples/donors.csv \
+    --population populations/registry_example.toml \
+    --seed 42 --out observed.tsv --manifest observed.manifest.json
+```
+
+The output TSV has columns `donor_id, profile_id, true_genotype, observed,
+missing_loci, status, error_detail`. Malformed records are isolated at the
+record level (`--mode permissive`, the default) or abort the batch
+(`--mode strict`). A JSON manifest records the seed, population, profile
+weights, per-donor profile assignments, and input/output SHA-256 checksums. The
+installed package also exposes this as the `tissuetypeforge` console script.
+
+## Configuration validation
+
+`build_population` / `load_population(_file)` validate before simulation and
+raise `ProfileValidationError` with a clear message when:
+
+- profile ids are not unique;
+- a weight is not finite or is negative;
+- no profile has positive weight;
+- weights do not sum to 1 (within a small tolerance);
+- a profile does not specify every configured locus;
+- a resolution value is outside the `0-field` / `1-field` / `2-field` vocabulary;
+- a profile names an unknown locus.
+
+## GL String dependency
+
+TissueTypeForge uses the published **SIP `glstring`** library (PyPI `glstring`)
+for all GL String parsing and serialization — a standards-conformant GL String
+1.1 implementation. TissueTypeForge does **not** ship its own GL String parser.
 
 ## Development
 
@@ -155,9 +176,15 @@ dependency is declared in `pyproject.toml` (`glstring>=0.1.0`).
 uv sync --extra dev
 uv run pytest
 uv run ruff check .
-uv run python examples/demo.py       # M1
-uv run python examples/demo_m2.py    # M2
+uv run python examples/population_demo.py
 ```
+
+## Migration from earlier versions
+
+The observation model was deliberately simplified in 0.3.0 (new resolution
+vocabulary, population-level joint profiles, no interlocus phasing, no
+serology/SBT/SSO). See [MIGRATION.md](MIGRATION.md) for the breaking changes and
+how to port previous `Strategy`/`phase_group` configurations.
 
 ## License
 
