@@ -1,28 +1,68 @@
 """TissueTypeForge: simulate HLA typing observations from known genetic truth.
 
-Milestone 1 — observation framework.
+Simplified observation model with population-level joint typing-profile
+distributions.
 
-Public API:
-    parse_gl_string / serialize       GL String round-trip
-    Strategy / load_strategy          typing strategy configuration
-    observe                           run an observation over truth
-    ObservationResult                 structured output
+Core concepts:
+    ResolutionMode                 controlled vocabulary: 0-field/1-field/2-field
+    TypingProfile                  a complete per-locus resolution assignment
+    PopulationTypingModel          categorical distribution over profiles
+    observe_genotype               observe one donor under one profile
+    simulate_cohort                seeded cohort simulation + reproducibility manifest
+    parse_gl_string / serialize    general-purpose GL String round-trip
+
+Observations are *unphased*: no interlocus phase is asserted. A 0-field locus is
+a missing result (omitted), never a fabricated homozygous call.
 """
 
+from tissuetypeforge.config import load_population, load_population_file
 from tissuetypeforge.glstring import parse_gl_string, serialize
-from tissuetypeforge.observation import observe
-from tissuetypeforge.result import ErrorCategory, ObservationResult
-from tissuetypeforge.strategy import Strategy, load_strategy, load_strategy_file
+from tissuetypeforge.observe import (
+    DonorObservation,
+    LocusObservation,
+    ObservationError,
+    observe_genotype,
+)
+from tissuetypeforge.population import (
+    PopulationTypingModel,
+    ProfileValidationError,
+    TypingProfile,
+    build_population,
+    build_profile,
+)
+from tissuetypeforge.resolution import (
+    ResolutionError,
+    ResolutionMode,
+    parse_resolution,
+)
+from tissuetypeforge.simulate import (
+    CohortResult,
+    ReproducibilityManifest,
+    sample_profile,
+    simulate_cohort,
+)
 
 __all__ = [
-    "ErrorCategory",
-    "ObservationResult",
-    "Strategy",
-    "load_strategy",
-    "load_strategy_file",
-    "observe",
+    "CohortResult",
+    "DonorObservation",
+    "LocusObservation",
+    "ObservationError",
+    "PopulationTypingModel",
+    "ProfileValidationError",
+    "ReproducibilityManifest",
+    "ResolutionError",
+    "ResolutionMode",
+    "TypingProfile",
+    "build_population",
+    "build_profile",
+    "load_population",
+    "load_population_file",
+    "observe_genotype",
     "parse_gl_string",
+    "parse_resolution",
+    "sample_profile",
     "serialize",
+    "simulate_cohort",
 ]
 
-__version__ = "0.1.0"
+__version__ = "0.3.0"
