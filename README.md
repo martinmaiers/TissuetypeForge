@@ -151,6 +151,20 @@ record level (`--mode permissive`, the default) or abort the batch
 weights, per-donor profile assignments, and input/output SHA-256 checksums. The
 installed package also exposes this as the `tissuetypeforge` console script.
 
+For a config-file-driven, CSV-in/CSV-out run, use the bash wrapper. It writes
+`id,genotype-full,genotype-typing,profile` (true genotype, simulated observed
+typing, and the sampled profile id):
+
+```bash
+scripts/tissuetypeforge-run.sh examples/tissuetypeforge.conf \
+    examples/donors.csv observed.csv
+```
+
+The config is a parsed (never sourced) `KEY=VALUE` file with `POPULATION`,
+`SEED`, `MODE`, `ID_COLUMN`, `GL_COLUMN`. Records that fail keep their row with
+an empty `genotype-typing` and are listed on stderr (`MODE=strict` aborts with
+exit 1 instead).
+
 ## Configuration validation
 
 `build_population` / `load_population(_file)` validate before simulation and

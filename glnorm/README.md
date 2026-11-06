@@ -30,6 +30,15 @@ Operations run in the order 1 → 2 → 3, so the final output is always canonic
 ordered and therefore **idempotent**: feeding output back through the same
 config yields byte-identical normalized GL Strings.
 
+## More documentation
+
+- **[docs/GUIDE.md](docs/GUIDE.md)** — worked examples of what is preserved,
+  how loci configuration really behaves, what counts as an invalid record,
+  idempotence, strict vs permissive, manifest example, and troubleshooting.
+- **`bin/glnorm-run.sh`** — config-file-driven wrapper: CSV in, CSV out
+  (`glnorm-run.sh CONFIG INPUT.csv OUTPUT.csv`); see the guide, section 8, and
+  [`examples/glnorm.conf`](examples/glnorm.conf).
+
 ## Install
 
 ```bash
@@ -52,8 +61,8 @@ Common options:
 | `--gl-column NAME` | column holding the GL String (default `gl_string`) |
 | `--donor-column NAME` | optional donor-id column for auditing |
 | `--input-format {auto,tsv,csv,lines}` | input format (default `auto` by extension/sniff) |
-| `--loci A,C,B,DRB1,DQB1` | configurable locus set **and order** |
-| `--locus-prefix HLA-` | prefix used when matching loci |
+| `--loci A,C,B,DRB1,DQB1` | configured locus set (used by `--enforce-loci` and recorded in the manifest; it does **not** reorder output — see the [guide](docs/GUIDE.md#3-loci-what-the-configuration-actually-controls)) |
+| `--locus-prefix HLA-` | prefix used when matching loci (use `""` for unprefixed input) |
 | `--enforce-loci` | error on records with loci outside the configured set |
 | `--no-normalize` | disable operation 1 |
 | `--reduce` | enable operation 2 (lossy ARD reduction) |
