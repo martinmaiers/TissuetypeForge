@@ -1,0 +1,25 @@
+# Example population typing model (TissueTypeForge).
+#
+# A categorical distribution over complete typing profiles. Each donor draws one
+# profile; the resolution choices across loci are therefore JOINT, never sampled
+# independently per locus. Weights must sum to 1.
+#
+# Load with:  tissuetypeforge.load_population_file("populations/registry_example.toml")
+
+name = "registry-example"
+loci = ["A", "C", "B", "DRB1"]
+
+[[profiles]]
+id = "legacy"
+weight = 0.20
+resolution = { A = "1-field", B = "1-field", C = "0-field", DRB1 = "1-field" }
+
+[[profiles]]
+id = "intermediate"
+weight = 0.50
+resolution = { A = "2-field", B = "2-field", C = "1-field", DRB1 = "2-field" }
+
+[[profiles]]
+id = "modern"
+weight = 0.30
+resolution = { A = "2-field", B = "2-field", C = "2-field", DRB1 = "2-field" }
